@@ -1,0 +1,24 @@
+# Conditions: src/DetectorConstruction.cc (same as batch mode).
+# In the UI, use /run/beamOn 100 to simulate events.
+/control/verbose 1
+/run/verbose 1
+
+/run/initialize
+/analysis/setFileName output.root
+
+/vis/open OGL 600x600-0+0
+
+#/vis/viewer/set/background 1 1 1
+
+/vis/viewer/set/style surface
+/vis/viewer/set/viewpointVector 1 1 1
+/vis/viewer/set/autoRefresh true
+
+/vis/drawVolume
+
+/vis/scene/add/axes 0 0 0 6 cm
+/vis/viewer/refresh
+
+/vis/scene/add/trajectories smooth
+/vis/scene/endOfEventAction accumulate
+/vis/scene/add/eventID

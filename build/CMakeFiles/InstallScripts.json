@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/Users/junho/hadron/geant4/DAMSA_CsI/build/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

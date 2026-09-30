@@ -1,0 +1,4 @@
+# Conditions: src/DetectorConstruction.cc (rebuild after editing).
+/run/initialize
+/analysis/setFileName output.root
+/run/beamOn 5000 

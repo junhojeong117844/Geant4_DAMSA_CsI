@@ -1,0 +1,3 @@
+# Legacy filename: conditions come only from DetectorConstruction.cc.
+# This file no longer selects a detector preset.
+/control/execute batch.mac
