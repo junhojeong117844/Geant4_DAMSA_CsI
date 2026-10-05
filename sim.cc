@@ -43,7 +43,7 @@ int main(int argc, char** argv)
         auto* visManager = new G4VisExecutive();
         visManager->Initialize();
 
-        uiManager->ApplyCommand("/control/execute vis.mac");
+        uiManager->ApplyCommand("/control/execute ../macros/vis.mac");
         ui->SessionStart();
 
         delete visManager;

@@ -87,8 +87,6 @@ void Materials::DefineMaterials()
     worldMat = nist->FindOrBuildMaterial("G4_Galactic");
     airMat = nist->FindOrBuildMaterial("G4_AIR");
     alMat = nist->FindOrBuildMaterial("G4_Al");
-    s13Mat = nist->FindOrBuildMaterial("G4_Si"); ; 
-    s14Mat = nist->FindOrBuildMaterial("G4_Si"); ;
     teflonMat = nist->FindOrBuildMaterial("G4_TEFLON");
     auto* acrylicMat = nist->FindOrBuildMaterial("G4_PLEXIGLASS");
 
@@ -112,7 +110,6 @@ void Materials::DefineMaterials()
     G4double csiAbsLength[nEntries];
     G4double airRIndex[nEntries];
     G4double airAbsLength[nEntries];
-    G4double sensorReflectivity[nEntries];
     G4double reflectorReflectivity[nEntries];
     G4double zeroEfficiency[nEntries];
     G4double cookieRindex[nEntries];
@@ -122,197 +119,145 @@ void Materials::DefineMaterials()
     G4double acrylicRindex[nEntries];
     G4double acrylicAbs[nEntries];
 
-    G4double s14PDE[nEntries] = {
-        18.00, 21.02, 23.27, 25.96, 28.19,
-        31.78, 34.33, 36.31, 40.23, 44.61,
-        48.08, 50.00, 51.42, 50.51, 48.00,
-        44.50, 40.50, 38.56, 36.90, 30.00,
-        19.00, 0.60
-    };
+	for (G4int i = 0; i < nEntries; ++i)
+	{
+		csiAbsLength[i] = 500.*mm;
+		airRIndex[i] = 1.0;
+		airAbsLength[i] = 10.*m;
+		reflectorReflectivity[i] = 0.95;
+		zeroEfficiency[i] = 0.0;
+		cookieRindex[i] = 1.43;
+		cookieAbs[i] = 10000.*mm;
+		greaseRindex[i] = 1.465;
+		greaseAbs[i] = 10000.*mm;
+		// Placeholder PMMA optics, NOT a measured UV-transmission model.
+		// T_bulk(d) = exp(-d/ABSLENGTH): 99.80% for a 20 mm path.
+		// Fresnel losses are handled separately by optical boundaries.
+		// Do not interpret the visual alpha or visible-light ~92% sheet
+		// transmission as transmission at the CsI emission peak (~300 nm).
+		// See ACRYLIC_OPTICS.md before substituting measured spectral data.
+		acrylicRindex[i] = 1.49;
+		acrylicAbs[i] = 10000.*mm;
+	}
 
-    G4double s13PDE[nEntries] = {
-        14.00, 16.00, 18.00, 20.00, 22.00,
-        25.00, 28.00, 31.00, 34.00, 37.00,
-        39.00, 40.00, 40.00, 39.00, 37.00,
-        32.00, 20.00, 15.00, 10.00, 04.00,
-        0.90, 0.30
-    };
+	auto* mptCookie = new G4MaterialPropertiesTable();
+	mptCookie->AddProperty("RINDEX", photonEnergy, cookieRindex, nEntries);
+	mptCookie->AddProperty("ABSLENGTH", photonEnergy, cookieAbs, nEntries);
+	cookieMat->SetMaterialPropertiesTable(mptCookie);
 
-     G4double BNL_s13PDE[nEntries] = {
-		20.5, 23.5, 27.0, 30.5, 33.0,
-    	35.5, 39.0, 42.5, 45.5, 48.0,
-    	49.3, 50.0, 49.7, 48.5, 46.5,
-    	43.5, 36.0, 35.5, 33.5, 28.5,
-    	17.0, 2.5
-    };
+	auto* mptGrease = new G4MaterialPropertiesTable();
+	mptGrease->AddProperty("RINDEX", photonEnergy, greaseRindex, nEntries);
+	mptGrease->AddProperty("ABSLENGTH", photonEnergy, greaseAbs, nEntries);
+	greaseMat->SetMaterialPropertiesTable(mptGrease);
 
-   for (G4int i = 0; i < nEntries; ++i)
-    {
-        csiAbsLength[i] = 500.*mm;
-        airRIndex[i] = 1.0;
-        airAbsLength[i] = 10.*m;
-        sensorReflectivity[i] = 0.0;
-        reflectorReflectivity[i] = 0.99;
-        zeroEfficiency[i] = 0.0;
-        cookieRindex[i] = 1.43;
-        cookieAbs[i] = 10000.*mm;
-        greaseRindex[i] = 1.465;
-        greaseAbs[i] = 10000.*mm;
-        // Constant optical approximation; replace with measured PMMA data when available.
-        acrylicRindex[i] = 1.49;
-        acrylicAbs[i] = 10000.*mm;
-        BNL_s13PDE[i] /= 100.;
-        s13PDE[i] /= 100.;
-        s14PDE[i] /= 100.;
-    }
+	auto* mptAcrylic = new G4MaterialPropertiesTable();
+	mptAcrylic->AddProperty("RINDEX", photonEnergy, acrylicRindex, nEntries);
+	mptAcrylic->AddProperty("ABSLENGTH", photonEnergy, acrylicAbs, nEntries);
+	acrylicMat->SetMaterialPropertiesTable(mptAcrylic);
 
-    auto* mptCookie = new G4MaterialPropertiesTable();
-    mptCookie->AddProperty("RINDEX", photonEnergy, cookieRindex, nEntries);
-    mptCookie->AddProperty("ABSLENGTH", photonEnergy, cookieAbs, nEntries);
-    cookieMat->SetMaterialPropertiesTable(mptCookie);
+	G4double teflonRIndex[nEntries];
+	G4double teflonAbsLength[nEntries];
+	for (G4int i = 0; i < nEntries; ++i)
+	{
+		teflonRIndex[i] = 1.35;
+		teflonAbsLength[i] = 1.*mm;
+	}
 
-    auto* mptGrease = new G4MaterialPropertiesTable();
-    mptGrease->AddProperty("RINDEX", photonEnergy, greaseRindex, nEntries);
-    mptGrease->AddProperty("ABSLENGTH", photonEnergy, greaseAbs, nEntries);
-    greaseMat->SetMaterialPropertiesTable(mptGrease);
+	auto* mptTeflonMaterial = new G4MaterialPropertiesTable();
+	mptTeflonMaterial->AddProperty(
+			"RINDEX", photonEnergy, teflonRIndex, nEntries
+			);
+	mptTeflonMaterial->AddProperty(
+			"ABSLENGTH", photonEnergy, teflonAbsLength, nEntries
+			);
+	teflonMat->SetMaterialPropertiesTable(mptTeflonMaterial);
 
-    auto* mptAcrylic = new G4MaterialPropertiesTable();
-    mptAcrylic->AddProperty("RINDEX", photonEnergy, acrylicRindex, nEntries);
-    mptAcrylic->AddProperty("ABSLENGTH", photonEnergy, acrylicAbs, nEntries);
-    acrylicMat->SetMaterialPropertiesTable(mptAcrylic);
+	crystalSurf = new G4OpticalSurface("CrystalSurface");
+	crystalSurf->SetModel(unified);
+	crystalSurf->SetType(dielectric_dielectric);
+	crystalSurf->SetFinish(polished);
 
-    G4double teflonRIndex[nEntries];
-    G4double teflonAbsLength[nEntries];
-    for (G4int i = 0; i < nEntries; ++i)
-    {
-        teflonRIndex[i] = 1.35;
-        teflonAbsLength[i] = 1.*mm;
-    }
+	alReflectorSurf = new G4OpticalSurface("AlReflectorSurface");
+	alReflectorSurf->SetModel(unified);
+	alReflectorSurf->SetType(dielectric_metal);
+	alReflectorSurf->SetFinish(polished);
 
-    auto* mptTeflonMaterial = new G4MaterialPropertiesTable();
-    mptTeflonMaterial->AddProperty(
-        "RINDEX", photonEnergy, teflonRIndex, nEntries
-    );
-    mptTeflonMaterial->AddProperty(
-        "ABSLENGTH", photonEnergy, teflonAbsLength, nEntries
-    );
-    teflonMat->SetMaterialPropertiesTable(mptTeflonMaterial);
+	teflonReflectorSurf = new G4OpticalSurface("TeflonReflectorSurface");
+	teflonReflectorSurf->SetModel(unified);
+	teflonReflectorSurf->SetType(dielectric_dielectric);
+	teflonReflectorSurf->SetFinish(groundbackpainted);
 
-    crystalSurf = new G4OpticalSurface("CrystalSurface");
-    crystalSurf->SetModel(unified);
-    crystalSurf->SetType(dielectric_dielectric);
-    crystalSurf->SetFinish(polished);
+	auto* mptAlReflector = new G4MaterialPropertiesTable();
+	mptAlReflector->AddProperty(
+			"REFLECTIVITY", photonEnergy, reflectorReflectivity, nEntries
+			);
+	mptAlReflector->AddProperty(
+			"EFFICIENCY", photonEnergy, zeroEfficiency, nEntries
+			);
+	alReflectorSurf->SetMaterialPropertiesTable(mptAlReflector);
 
-    alReflectorSurf = new G4OpticalSurface("AlReflectorSurface");
-    alReflectorSurf->SetModel(unified);
-    alReflectorSurf->SetType(dielectric_metal);
-    alReflectorSurf->SetFinish(polished);
+	auto* mptTeflonReflector = new G4MaterialPropertiesTable();
+	// Back-painted surfaces require the refractive index of the paint layer.
+	mptTeflonReflector->AddProperty(
+			"RINDEX", photonEnergy, teflonRIndex, nEntries
+			);
+	mptTeflonReflector->AddProperty(
+			"REFLECTIVITY", photonEnergy, reflectorReflectivity, nEntries
+			);
+	mptTeflonReflector->AddProperty(
+			"EFFICIENCY", photonEnergy, zeroEfficiency, nEntries
+			);
+	teflonReflectorSurf->SetMaterialPropertiesTable(mptTeflonReflector);
 
-    teflonReflectorSurf = new G4OpticalSurface("TeflonReflectorSurface");
-    teflonReflectorSurf->SetModel(unified);
-    teflonReflectorSurf->SetType(dielectric_dielectric);
-    teflonReflectorSurf->SetFinish(groundbackpainted);
+	// 2-nm sampling from 250 to 350 nm, followed by long-wavelength tail point
+	std::vector<G4double> emissionWavelengthNm;
+	for (G4int wavelengthNm = 250; wavelengthNm <= 350; wavelengthNm += 2)
+		emissionWavelengthNm.push_back(static_cast<G4double>(wavelengthNm));
 
-    s13Surf = new G4OpticalSurface("S13Surface");
-    s13Surf->SetModel(unified);
-    s13Surf->SetType(dielectric_metal);
-    s13Surf->SetFinish(polished);
+	const std::vector<G4double> tailWavelengthNm = {
+		360., 370., 380., 390., 400., 425., 450., 475., 500.,
+		525., 550., 575., 600., 625., 650., 675., 700.
+	};
+	emissionWavelengthNm.insert(
+			emissionWavelengthNm.end(),
+			tailWavelengthNm.begin(),
+			tailWavelengthNm.end()
+			);
 
-    s14Surf = new G4OpticalSurface("S14Surface");
-    s14Surf->SetModel(unified);
-    s14Surf->SetType(dielectric_metal);
-    s14Surf->SetFinish(polished);
+	std::vector<G4double> emissionEnergy;
+	std::vector<G4double> emissionIntensity;
+	emissionEnergy.reserve(emissionWavelengthNm.size());
+	emissionIntensity.reserve(emissionWavelengthNm.size());
 
-    auto* mptAlReflector = new G4MaterialPropertiesTable();
-    mptAlReflector->AddProperty(
-        "REFLECTIVITY", photonEnergy, reflectorReflectivity, nEntries
-    );
-    mptAlReflector->AddProperty(
-        "EFFICIENCY", photonEnergy, zeroEfficiency, nEntries
-    );
-    alReflectorSurf->SetMaterialPropertiesTable(mptAlReflector);
+	for (auto it = emissionWavelengthNm.rbegin();
+			it != emissionWavelengthNm.rend(); ++it)
+	{
+		emissionEnergy.push_back((h_Planck * c_light) / (*it * nm));
+		emissionIntensity.push_back(InterpolateEmission(*it));
+	}
 
-    auto* mptTeflonReflector = new G4MaterialPropertiesTable();
-    // Back-painted surfaces require the refractive index of the paint layer.
-    mptTeflonReflector->AddProperty(
-        "RINDEX", photonEnergy, teflonRIndex, nEntries
-    );
-    mptTeflonReflector->AddProperty(
-        "REFLECTIVITY", photonEnergy, reflectorReflectivity, nEntries
-    );
-    mptTeflonReflector->AddProperty(
-        "EFFICIENCY", photonEnergy, zeroEfficiency, nEntries
-    );
-    teflonReflectorSurf->SetMaterialPropertiesTable(mptTeflonReflector);
+	auto* mptCsI = new G4MaterialPropertiesTable();
+	mptCsI->AddProperty("RINDEX", photonEnergy, csiRIndex, nEntries);
+	mptCsI->AddProperty("ABSLENGTH", photonEnergy, csiAbsLength, nEntries);
+	mptCsI->AddProperty(
+			"SCINTILLATIONCOMPONENT1",
+			emissionEnergy.data(),
+			emissionIntensity.data(),
+			static_cast<G4int>(emissionEnergy.size())
+			);
+	mptCsI->AddConstProperty("SCINTILLATIONYIELD", 2100./MeV);
+	mptCsI->AddConstProperty("RESOLUTIONSCALE", 1.0);
+	mptCsI->AddConstProperty("SCINTILLATIONTIMECONSTANT1", 16.*ns);
+	CsIMat->SetMaterialPropertiesTable(mptCsI);
 
-    auto* mptS13 = new G4MaterialPropertiesTable();
-    mptS13->AddProperty("EFFICIENCY", photonEnergy, BNL_s13PDE, nEntries);
-    mptS13->AddProperty(
-        "REFLECTIVITY", photonEnergy, sensorReflectivity, nEntries
-    );
-    s13Surf->SetMaterialPropertiesTable(mptS13);
+	auto* mptAir = new G4MaterialPropertiesTable();
+	mptAir->AddProperty("RINDEX", photonEnergy, airRIndex, nEntries);
+	mptAir->AddProperty("ABSLENGTH", photonEnergy, airAbsLength, nEntries);
+	airMat->SetMaterialPropertiesTable(mptAir);
 
-    auto* mptS14 = new G4MaterialPropertiesTable();
-    mptS14->AddProperty("EFFICIENCY", photonEnergy, BNL_s13PDE, nEntries);
-    mptS14->AddProperty(
-        "REFLECTIVITY", photonEnergy, sensorReflectivity, nEntries
-    );
-    s14Surf->SetMaterialPropertiesTable(mptS14);
+	auto* mptWorld = new G4MaterialPropertiesTable();
+	mptWorld->AddProperty("RINDEX", photonEnergy, airRIndex, nEntries);
+	mptWorld->AddProperty("ABSLENGTH", photonEnergy, airAbsLength, nEntries);
+	worldMat->SetMaterialPropertiesTable(mptWorld);
 
-    // 2-nm sampling from 250 to 350 nm, followed by long-wavelength tail point
-    std::vector<G4double> emissionWavelengthNm;
-    for (G4int wavelengthNm = 250; wavelengthNm <= 350; wavelengthNm += 2)
-        emissionWavelengthNm.push_back(static_cast<G4double>(wavelengthNm));
-
-    const std::vector<G4double> tailWavelengthNm = {
-        360., 370., 380., 390., 400., 425., 450., 475., 500.,
-        525., 550., 575., 600., 625., 650., 675., 700.
-    };
-    emissionWavelengthNm.insert(
-        emissionWavelengthNm.end(),
-        tailWavelengthNm.begin(),
-        tailWavelengthNm.end()
-    );
-
-    std::vector<G4double> emissionEnergy;
-    std::vector<G4double> emissionIntensity;
-    emissionEnergy.reserve(emissionWavelengthNm.size());
-    emissionIntensity.reserve(emissionWavelengthNm.size());
-
-    for (auto it = emissionWavelengthNm.rbegin();
-         it != emissionWavelengthNm.rend(); ++it)
-    {
-        emissionEnergy.push_back((h_Planck * c_light) / (*it * nm));
-        emissionIntensity.push_back(InterpolateEmission(*it));
-    }
-
-    auto* mptCsI = new G4MaterialPropertiesTable();
-    mptCsI->AddProperty("RINDEX", photonEnergy, csiRIndex, nEntries);
-    mptCsI->AddProperty("ABSLENGTH", photonEnergy, csiAbsLength, nEntries);
-    mptCsI->AddProperty(
-        "SCINTILLATIONCOMPONENT1",
-        emissionEnergy.data(),
-        emissionIntensity.data(),
-        static_cast<G4int>(emissionEnergy.size())
-    );
-    mptCsI->AddConstProperty("SCINTILLATIONYIELD", 2100./MeV);
-    mptCsI->AddConstProperty("RESOLUTIONSCALE", 1.0);
-    mptCsI->AddConstProperty("SCINTILLATIONTIMECONSTANT1", 16.*ns);
-    CsIMat->SetMaterialPropertiesTable(mptCsI);
-
-    auto* mptAir = new G4MaterialPropertiesTable();
-    mptAir->AddProperty("RINDEX", photonEnergy, airRIndex, nEntries);
-    mptAir->AddProperty("ABSLENGTH", photonEnergy, airAbsLength, nEntries);
-    airMat->SetMaterialPropertiesTable(mptAir);
-
-    auto* mptWorld = new G4MaterialPropertiesTable();
-    mptWorld->AddProperty("RINDEX", photonEnergy, airRIndex, nEntries);
-    mptWorld->AddProperty("ABSLENGTH", photonEnergy, airAbsLength, nEntries);
-    worldMat->SetMaterialPropertiesTable(mptWorld);
-
-    auto* mptSensorMaterial = new G4MaterialPropertiesTable();
-    mptSensorMaterial->AddProperty("RINDEX", photonEnergy, airRIndex, nEntries);
-    mptSensorMaterial->AddProperty("ABSLENGTH", photonEnergy, airAbsLength, nEntries);
-    s13Mat->SetMaterialPropertiesTable(mptSensorMaterial);
-    s14Mat->SetMaterialPropertiesTable(mptSensorMaterial);
 }

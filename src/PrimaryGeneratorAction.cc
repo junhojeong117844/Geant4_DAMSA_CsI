@@ -1,4 +1,6 @@
 #include "PrimaryGeneratorAction.hh"
+#include "GeometryLayout.hh"
+#include "G4RunManager.hh"
 
 #include "G4ParticleGun.hh"
 #include "G4ParticleTable.hh"
@@ -91,8 +93,8 @@ PrimaryGeneratorAction::PrimaryGeneratorAction()
 {
     fParticleGun = new G4ParticleGun();
 
-    ReadSpectrum("Sr-90 Beta Spectrum.csv", srEnergy, srRatio);
-    ReadSpectrum("Y-90 Beta Spectrum.csv", yEnergy, yRatio);
+    ReadSpectrum("../datas/Sr-90 Beta Spectrum.csv", srEnergy, srRatio);
+    ReadSpectrum("../datas/Y-90 Beta Spectrum.csv", yEnergy, yRatio);
 }
 
 PrimaryGeneratorAction::~PrimaryGeneratorAction()
@@ -104,6 +106,10 @@ void PrimaryGeneratorAction::GeneratePrimaries(G4Event* anEvent)
 {
     G4ParticleTable* particleTable =
         G4ParticleTable::GetParticleTable();
+
+    const auto* detector = static_cast<const DetectorConstruction*>(
+        G4RunManager::GetRunManager()->GetUserDetectorConstruction());
+    const GeometryLayout layout(detector->GetConfiguration());
 
     G4String particleName = "beam"; // Sr90_collimator, ion, beam usable
 
@@ -132,7 +138,7 @@ void PrimaryGeneratorAction::GeneratePrimaries(G4Event* anEvent)
         G4double z = r * std::sin(phi);
 
         fParticleGun->SetParticlePosition(
-            G4ThreeVector(0.0, 41.0 * mm, 0.0)
+            G4ThreeVector(0.0, 41.0 * mm + layout.sideShift, 0.0)
         );
 
         fParticleGun->SetParticleMomentumDirection(
@@ -142,12 +148,12 @@ void PrimaryGeneratorAction::GeneratePrimaries(G4Event* anEvent)
     else if (particleName == "beam")
     {
         G4ParticleDefinition* gamma =
-            particleTable->FindParticle("e-");
+            particleTable->FindParticle("proton");
 
         fParticleGun->SetParticleDefinition(gamma);
-        fParticleGun->SetParticleEnergy(200.0 * MeV);
+        fParticleGun->SetParticleEnergy(480.0 * MeV);
         fParticleGun->SetParticlePosition(
-            G4ThreeVector(0.0, 6.0 * mm, -55.0)
+            G4ThreeVector(0.0, 6.0 * mm + layout.sideShift, -0.0)
         );
         fParticleGun->SetParticleMomentumDirection(
             G4ThreeVector(0.0, -1.0, 0.0)
@@ -170,7 +176,7 @@ void PrimaryGeneratorAction::GeneratePrimaries(G4Event* anEvent)
         fParticleGun->SetParticleCharge(0.0);
         fParticleGun->SetParticleEnergy(0.0 * keV);
         fParticleGun->SetParticlePosition(
-            G4ThreeVector(0.0, 7.0 * mm, -55.0 * mm)
+            G4ThreeVector(0.0, 7.0 * mm + layout.sideShift, -55.0 * mm)
         );
     }
 

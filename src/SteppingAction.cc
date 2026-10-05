@@ -2,13 +2,13 @@
 
 #include "EventAction.hh"
 
-#include "G4AnalysisManager.hh"
+#include "GeometryLayout.hh"
 #include "G4LogicalVolume.hh"
-#include "G4OpBoundaryProcess.hh"
+#include "DetectorConstruction.hh"
+#include "G4GeometryTolerance.hh"
+#include <cmath>
 #include "G4OpticalPhoton.hh"
 #include "G4PhysicalConstants.hh"
-#include "G4ProcessManager.hh"
-#include "G4ProcessVector.hh"
 #include "G4Step.hh"
 #include "G4StepPoint.hh"
 #include "G4SystemOfUnits.hh"
@@ -16,40 +16,9 @@
 #include "G4VPhysicalVolume.hh"
 #include "G4VProcess.hh"
 
-SteppingAction::SteppingAction(EventAction* eventAction)
-: fEventAction(eventAction)
+SteppingAction::SteppingAction(EventAction* eventAction, const DetectorConstruction* detector)
+: fEventAction(eventAction), fDetector(detector)
 {
-}
-
-G4OpBoundaryProcess* SteppingAction::GetBoundaryProcess()
-{
-    if (fBoundaryProcess)
-        return fBoundaryProcess;
-
-    auto* processManager =
-        G4OpticalPhoton::OpticalPhotonDefinition()->GetProcessManager();
-
-    if (!processManager)
-        return nullptr;
-
-    auto* processList = processManager->GetProcessList();
-
-    if (!processList)
-        return nullptr;
-
-    for (G4int i = 0; i < processList->size(); ++i)
-    {
-        auto* boundary =
-            dynamic_cast<G4OpBoundaryProcess*>((*processList)[i]);
-
-        if (boundary)
-        {
-            fBoundaryProcess = boundary;
-            break;
-        }
-    }
-
-    return fBoundaryProcess;
 }
 
 void SteppingAction::UserSteppingAction(const G4Step* step)
@@ -68,21 +37,10 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
     const G4String preLogicalName =
         preVolume ? preVolume->GetLogicalVolume()->GetName() : "";
 
-    // Energy deposited in the CsI crystal.
-    const G4double edep = step->GetTotalEnergyDeposit();
-
-	if (preLogicalName == "logicScintillator" && edep > 0.)
-	{
-		fEventAction->AddPSEdep(edep);
-	}
-
-    if (preLogicalName == "logicCrystal" && edep > 0.)
-        fEventAction->AddCrystalEdep(edep);
-
-    // Count and histogram each scintillation photon at the step where it is
-    // generated in the CsI crystal. H1 itself is defined only in RunAction.
+    // Count all optical photons produced in each crystal, including scintillation.
     if (preLogicalName == "logicCrystal")
     {
+        fEventAction->AddEnergyDeposit(preVolume->GetCopyNo(), step->GetTotalEnergyDeposit());
         const auto* secondaries = step->GetSecondaryInCurrentStep();
 
         if (secondaries)
@@ -96,71 +54,43 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
                     continue;
                 }
 
-                const auto* creatorProcess = secondary->GetCreatorProcess();
+                fEventAction->AddGeneratedPhoton(preVolume->GetCopyNo());
 
-                if (!creatorProcess ||
-                    creatorProcess->GetProcessName() != "Scintillation")
-                {
-                    continue;
-                }
 
-                fEventAction->AddGeneratedPhoton();
-
-                const G4double photonEnergy =
-                    secondary->GetKineticEnergy();
-
-                if (photonEnergy > 0.)
-                {
-                    const G4double wavelength =
-                        h_Planck * c_light / photonEnergy;
-
-                    // H1 ID 0: GeneratedWavelength
-                    G4AnalysisManager::Instance()->FillH1(
-                        0,
-                        wavelength / nm
-                    );
-                }
             }
         }
     }
 
-    // Only optical photons created by scintillation in the CsI can be counted
-    // as S13/S14 detections.
-    if (track->GetDefinition() !=
-        G4OpticalPhoton::OpticalPhotonDefinition())
-    {
+    // Virtual collector: without a guide, photons must traverse the end gap.
+    // No physical SiPM, PDE, or Detection status is used.
+    if (track->GetDefinition() != G4OpticalPhoton::OpticalPhotonDefinition() ||
+        postStepPoint->GetStepStatus() != fGeomBoundary)
+        return;
+
+    const auto position = postStepPoint->GetPosition();
+    const auto direction = preStepPoint->GetMomentumDirection();
+    const auto tolerance = G4GeometryTolerance::GetInstance()->GetSurfaceTolerance();
+    if (!preVolume) return;
+    const auto crystal = preVolume->GetCopyNo();
+    if (crystal < 1 || crystal > DetectorConstruction::CrystalCount) return;
+    const GeometryLayout layout(fDetector->GetConfiguration());
+    const auto& config = fDetector->GetConfiguration();
+    for (const int sign : {1, -1}) {
+        const auto& area = sign > 0 ? config.s13 : config.s14;
+        if (!area.enabled) continue;
+        const G4String host = area.lightGuide
+            ? (sign > 0 ? "logicS13Guide" : "logicS14Guide")
+            : area.gap > 0 ? (sign > 0 ? "logicS13EndAir" : "logicS14EndAir")
+                           : "logicCrystal";
+        const auto planeZ = sign*(60*mm + (area.gap + (area.lightGuide ? area.guideLength : 0)));
+        if (preLogicalName != host || sign*direction.z() <= 0 ||
+            std::abs(position.z()-planeZ) > tolerance ||
+            std::abs(position.x()-area.offsetX) > area.width/2 ||
+            std::abs(position.y()-layout.CrystalY(crystal)-area.offsetY) > area.height/2)
+            continue;
+        fEventAction->RecordPhoton(crystal, sign, step);
+        // Treat the aperture as a terminal collector: each photon is stored once.
+        track->SetTrackStatus(fStopAndKill);
         return;
     }
-
-    const auto* creatorProcess = track->GetCreatorProcess();
-    const auto* vertexVolume = track->GetLogicalVolumeAtVertex();
-
-    if (!creatorProcess ||
-        creatorProcess->GetProcessName() != "Scintillation" ||
-        !vertexVolume ||
-        vertexVolume->GetName() != "logicCrystal")
-    {
-        return;
-    }
-
-    if (postStepPoint->GetStepStatus() != fGeomBoundary)
-        return;
-
-    auto* boundaryProcess = GetBoundaryProcess();
-
-    if (!boundaryProcess || boundaryProcess->GetStatus() != Detection)
-        return;
-
-    const auto* postVolume = postStepPoint->GetPhysicalVolume();
-
-    if (!postVolume)
-        return;
-
-    const G4String& logicalName =
-        postVolume->GetLogicalVolume()->GetName();
-
-    if (logicalName == "logicS13")
-        fEventAction->AddS13Photon();
-    else if (logicalName == "logicS14")
-        fEventAction->AddS14Photon();
 }

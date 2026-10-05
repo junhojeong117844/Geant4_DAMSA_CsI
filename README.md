@@ -1,131 +1,168 @@
 # DAMSA_CsI 시뮬레이션
 
-검출기·트리거·선원 조건은 `src/DetectorConstruction.cc` 생성자의
-**USER CONFIGURATION**에서 설정합니다. 수정 후 다시 빌드하세요.
-배치와 GUI는 동일한 조건을 사용합니다. 매크로는 초기화, 출력 파일 이름,
-이벤트 수, 시각화만 제어하며 `/damsa/` 설정 명령은 제거했습니다.
+SiPM 실물과 PDE를 시뮬레이션에 넣지 않습니다. 크리스탈 또는 라이트가이드
+끝면에 **가상 기록 영역**을 정하고, 도달한 광자를 모두 ROOT에 저장합니다.
+10×10×120 mm 크리스탈 8개를 빔 진행방향(−y)으로 배열합니다.
+중심 간격은 10.25 mm로 고정하며 중심은 (0, −10.25×(번호−1), 0) mm입니다.
+즉 y = 0, −10.25, −20.50, −30.75, −41.00, −51.25, −61.50, −71.75 mm입니다.
+기본 테플론 두께는 한쪽당 0.04 mm, 공기층은 한쪽당 0.05 mm입니다.
+외피 폭은 10.18 mm, 이웃 외피 사이 여유는 0.07 mm입니다.
+포장이나 가이드가 고정 간격보다 커지면 설정 오류로 중단합니다.
+빔이 처음 만나는 크리스탈부터 1–8번이며, 현재 SiPM 채널도 1–8번입니다.
+SiPM 모델 선택과 PDE 적용은 데이터 분석 단계에서 수행합니다.
 
-## 실행
-
-프로젝트 폴더에서:
+## 빌드와 실행
 
 ```bash
-cmake -S . -B build
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j 4
 cd build
-```
-
-배치 실행:
-
-```bash
 ./DAMSA_CsI batch.mac
 ```
 
-`macros/batch.mac`의 `/run/beamOn 1000000`이 이벤트 수입니다.
-원본 매크로를 수정하면 위 CMake 명령을 다시 실행해 build에 복사하세요.
-`build/batch.mac`을 직접 수정하면 즉시 적용되지만 CMake 재실행 시 덮어씁니다.
+인자 없이 실행하면 `vis.mac`을 사용하는 GUI가 열립니다.
+`macros/batch.mac`에서 출력 이름과 이벤트 수를 지정합니다. 기본값은
+`output.root`, 5000 이벤트입니다. CMake를 다시 실행하면 매크로가 build에 복사됩니다.
+`/analysis/setFileName`으로 출력 이름을 바꿀 수 있습니다.
+서로 다른 런은 다른 출력 이름을 지정하세요. eventID는 런마다 다시 시작합니다.
 
-GUI 실행:
+완료 이벤트를 모든 작업 스레드에서 합산하여 약 5초마다 진행률과
+예상 남은 시간(ETA)을 `1시간 23분 45초` 형식으로 표시합니다. 마지막 100%는
+갱신 간격과 관계없이 즉시 표시합니다. 이벤트가 완료될 때 갱신하므로 첫 이벤트가
+오래 걸리면 첫 갱신도 늦어집니다. 각 런마다 초기화되며 100%는 이벤트 처리
+완료를 뜻합니다. ROOT 저장까지 끝나면 `[Run] ROOT output closed.`가 표시됩니다.
+ETA는 완료 이벤트의 평균 처리 속도 기준 추정치입니다.
+
+대량 실행에는 위의 Release 빌드와 GUI 없는 batch 실행을 사용하세요.
+MT 지원 Geant4에서는 기본적으로 사용 가능한 CPU 코어 수만큼 작업 스레드를
+요청합니다. 필요하면 매크로의 `/run/initialize` 앞에
+`/run/numberOfThreads 4` 등을 넣어 스레드 수를 조정할 수 있습니다.
+GUI의 궤적 누적은 대량 광학 광자 실행에서 피하는 편이 좋습니다.
+
+## 기록 영역 설정
+
+`src/DetectorConstruction.cc` 생성자의 **USER CONFIGURATION**을 수정하고
+다시 빌드합니다. 모든 길이는 전체 크기이며 S13은 +z, S14는 -z 쪽의
+**영역 이름**입니다. 특정 SiPM 모델을 뜻하지 않습니다.
+
+`s13`, `s14`의 설정 순서:
+
+```cpp
+// enabled, width, height, offsetX, offsetY, gap, gapMaterial,
+// lightGuide, guideLength, guideWidth, guideHeight, guideMaterial
+fConfig.s14 = {true, 6*mm, 6*mm, 0, 0, 1*um, "air",
+               true, 20*mm, 6*mm, 6*mm, "acrylic"};
+```
+
+- `width`, `height`: 가상 기록 영역의 가로·세로 크기.
+- `offsetX`, `offsetY`: 끝면 중심에서 기록 영역 중심까지의 이동량(각 크리스탈 끝면 중심 기준 x/y 좌표).
+- `lightGuide=false`: 크리스탈 바깥에 `gapMaterial`로 채운 `gap` 두께의 층을 두고,
+  그 바깥면(z = ±(60 mm + gap))에서 기록합니다. 기본 air, 1 µm 설정에서는
+  크리스탈에서 투과하여 에어갭을 통과한 광자만 집계합니다. `gap=0`이면 크리스탈 끝면에서 기록합니다.
+- `lightGuide=true`: 크리스탈 → gap → 라이트가이드 순으로 배치하며,
+  가이드 출구면(z = ±(60 mm + gap + guideLength))에서 기록합니다.
+- `guideWidth`, `guideHeight`: 라이트가이드 출구 크기. 기록 영역 크기와 독립적입니다.
+- 기록 영역은 해당 끝면 안에 들어가야 합니다. 두께나 SiPM 물질은 없습니다.
+
+현재 기본값은 S14(−z)만 활성, 6×6 mm 기록 영역이며 라이트가이드는
+비활성입니다. 기록 영역을 제외한 끝면과 네 측면은 반사재로 감쌉니다.
+가이드를 활성화하면 연결부의 측면, 가이드 측면 및 출구의 기록 영역 외 부분도
+설정한 반사재로 감쌉니다. `reflector=none`은 반사재를 제거합니다.
+
+양쪽 기록 영역을 활성화하면 크리스탈 순으로 +z, −z에 채널을 배정합니다.
+이때 1번 크리스탈은 SiPM 1·2, 2번은 3·4, …, 8번은 15·16입니다.
+
+**기록 기준:** 가이드가 없고 `gap>0`이면 갭 내부에서 바깥 방향으로 기록면에
+도달한 광자를 저장합니다. 크리스탈–갭 경계의 반사·굴절과 갭 내 이동이 반영됩니다.
+가이드가 있으면 기존대로 가이드 출구면 입사 광자를, `gap=0`이고 가이드가 없으면
+크리스탈 끝면 입사 광자를 기록합니다. 기록면 자체의 투과 여부는 요구하지 않습니다.
+입사 방향과 에너지는 경계 처리 전 값을 저장하며, 기록 후 추적을 종료합니다.
+따라서 한 광자는 한 번만 기록됩니다. 이는 이상적인 종단 수집 영역이며,
+센서 창의 투과율·반사율이나 SiPM 자체의 광학 구조는 포함하지 않습니다.
+
+## 기타 조건
+
+| 항목 | 설정 |
+|---|---|
+| 반사체 | `reflector`: `none`, `aluminum`, `teflon` |
+| 측면 공기층·포일 두께 | `sideGap`, `foilThickness` |
+| 콜리메이터·나트륨 물질 구조물 | `collimator`, `sourceBead` |
+| 선택 트리 | `trigger`: `none`(기본), `self`, `external` |
+| 입사 광자 수 선택 | `selfChannel`: `sum`, `s13`, `s14`, `coincidence`; `selfThreshold` |
+| 외부 PS 에너지 선택 | `externalThreshold` |
+
+`self`의 임계값은 **PDE 미적용 입사 광자 수**의 엄격한 `>` 비교이며 NPE가 아닙니다.
+NPE 기반 트리거는 분석 단계에서 적용하세요. 새 출력은 모든 이벤트를 저장하며
+`trigger` 설정에 따른 선택 트리는 만들지 않습니다. `external`은 PS 카운터 배치를 제어합니다.
+
+광학 물질 데이터는 `src/Materials.cc`, 물리 프로세스는 `src/PhysicsList.cc`,
+선원 설정은 `src/PrimaryGeneratorAction.cc`에 있습니다. 현재 선원은 480 MeV
+양성자 빔입니다. `sourceBead`는 나트륨 물질 구조물만 제어합니다.
+결합 물질은 `air`, `grease`, `cookie`, `acrylic`을 지원합니다.
+아크릴 광학 상수의 가정은 `src/ACRYLIC_OPTICS.md`를 참고하세요.
+
+## ROOT 출력
+
+현재 SiPM별 트리 `SiPM1`–`SiPM8`을 저장합니다.
+각 트리는 **이벤트당 한 행**이며 광자 정보는 가변 길이 배열입니다.
+도달 광자가 없으면 배열은 비어 있고 생성 광자 수는 그대로 저장합니다.
+기존 `AllEvents`, `PhotonEvents`, `Photons`, 선택 트리는 생성하지 않습니다.
+양쪽 끝면을 모두 활성화하면 채널 수에 따라 `SiPM1`–`SiPM16` 트리가 생성됩니다.
+
+| 열 | 의미 |
+|---|---|
+| `eventID` | 이벤트 번호 |
+| `Generated_photons` | 해당 이벤트에 해당 크리스탈에서 생성된 모든 광학 2차 광자 수(섬광 포함) |
+| `photon_count` | 해당 SiPM 영역 도달 광자 수, 아래 배열의 길이 |
+| `energy_eV` | SiPM 도달 광자별 입사 에너지 배열 (eV) |
+| `x_mm`, `y_mm`, `z_mm` | 광자별 기록면 도달 위치 배열 (전역 좌표, mm) |
+| `crystalID` | 해당 SiPM 채널에 대응하는 크리스탈 번호 |
+| `edep_MeV` | 이벤트 전체에서 해당 크리스탈에 누적된 total energy deposit (MeV) |
+
+광학 광자만 판별해 수집하며 빔 정보, PDG, track/parent ID, 시간, 파장, 모멘텀, 방향은 저장하지 않습니다.
+광자 모멘텀 크기는 `p=E/c`, 파장은 `lambda=hc/E`로 분석 시 환산합니다.
+따라서 모멘텀의 eV/c 단위 수치는 `energy_eV`와 같습니다. 모멘텀 방향은 복원할 수 없습니다.
+에너지는 기록면 경계 상호작용 전 입사값이며 위치는 경계 도달점입니다.
+`edep_MeV`는 해당 이벤트의 모든 입자·step에 대한 결정별 누적값이며, 광자 생성 순간 값이나 primary 트랙 단독 손실이 아닙니다.
+광자가 도달하지 않아도 이벤트 행과 결정별 누적값은 저장합니다.
+
+같은 행의 배열에서 동일한 인덱스는 같은 광자를 뜻합니다.
+생성 수는 수집한 크리스탈 자체의 생성 수이며, 외부에서 들어온 광자는 포함하지 않습니다.
+도달 광자에는 생성 위치와 무관하게 영역으로 입사한 모든 광자가 포함됩니다.
+MT 실행에서는 행 순서를 가정하지 말고 `eventID`로 트리 사이를 연결하세요.
+SiPM 크기·위치 등 설정 정보와 별도 `.config.txt`는 저장하지 않습니다.
+이전 출력과 트리 이름·스키마가 다르므로 분석 코드를 맞춰야 합니다.
+
+## 분석 플롯
+
+원본 매크로는 `macros/`에 있고 CMake 구성 시 `build/`로 복사됩니다.
 
 ```bash
-./DAMSA_CsI
+cd build
+root -l 'Plot2D.C("output.root")'
+root -l 'PlotNPE.C("output.root")'
+root -l 'PlotEnergy.C("output.root")'
 ```
 
-`vis.mac`으로 검출기를 표시하고 명령 입력을 기다립니다. GUI 명령창에서:
+- `Plot2D`: 모델 3종 × 채널의 기록면 위치 분포. 색은 PDE 가중 예상 PE 합계입니다.
+- `PlotNPE`: 기본 24개 패널에 이벤트별 생성 광자 수(빨강), 도달 광자 수(초록),
+  PDE 가중 예상 NPE(파랑)를 겹칩니다. 양끝 기록 시 48개 패널입니다.
+  x축은 `개수 + 1`의 로그축으로 0도 포함하며, y축은 로그 구간당 이벤트 수입니다.
+  기존 1–50 NPE 선택은 제거하여 모든 이벤트와 전체 범위를 사용합니다.
+  별도 창에는 도달/생성 및 예상 NPE/생성 비율 분포를 표시합니다.
+  생성 수가 0인 이벤트는 비율 분포에서 제외하고 제외 수를 표기합니다.
+  콘솔에는 채널·모델별 합계와 `100 × 합계/생성 합계` 비율을 출력합니다.
+  이는 이벤트별 비율의 단순 평균과 다릅니다.
+- `PlotEnergy`: 크리스탈별 에너지 디파짓, 디파짓 대 생성 광자 수,
+  빔 에너지와 출발 위치 분포, 첫 이벤트의 입자 PDG·위치·방향을 표시합니다.
+  위치 지도는 출발점이며 실제 입자 궤적은 아닙니다.
 
-```text
-/run/beamOn 100
-```
+`Generated_photons`는 해당 크리스탈의 생성 수, 도달 수는 해당 영역의 전체 입사 수입니다.
+따라서 다른 크리스탈에서 이동해 온 광자가 있으면 비율은 동일한 광자 집단의 검출 효율이
+아니며 100%를 넘을 수도 있습니다. NPE는 `sum PDE(energy)` 기대값으로,
+실제 검출의 확률적 샘플링이나 전자회로 응답은 포함하지 않습니다.
+PDE는 기존 매크로의 6025/6050/6075 표와 범위 밖 에너지의 끝값 적용을 유지합니다.
 
-다음 런을 별도 저장하려면 실행 전에 `/analysis/setFileName run2.root`를 입력하세요.
-기본 출력은 실행 폴더의 `output.root`, 설정 기록은 `output.root.config.txt`입니다.
-`beamOn`은 이벤트 생성 명령입니다. 기본 선원은 감마 빔이 아니라 Sr-90 이온입니다.
-
-## 조건 수정
-
-모든 길이는 전체 크기입니다. S13은 +z, S14는 -z입니다.
-
-| 조건 | USER CONFIGURATION 항목 |
-|---|---|
-| SiPM 사용·크기·간격 | `s13`, `s14`: enabled, width, height, thickness, gap, gapMaterial, lightGuide, guideLength, guideGap, guideMaterial 순서 |
-| 반사체 | `reflector`: `none`, `aluminum`, `teflon` |
-| 측면 간격·포일 두께 | `sideGap`, `foilThickness` |
-| 콜리메이터·나트륨 구형 구조물 | `collimator`, `sourceBead` |
-| 트리거 | `trigger`: `none`, `crystal`, `external` |
-| 셀프 트리거 채널 | `selfChannel`: `sum`, `s13`, `s14`, `coincidence` |
-| 트리거 임계값 | `selfThreshold`, `externalThreshold` (엄격한 `>` 비교) |
-| 선원 모드 | `sourceMode`: `ion`, `beam`, `Sr90_collimator` |
-| 이온 | `ionZ`, `ionA`, `ionPosition` |
-| 단색 입자 빔 | `beamParticle`, `beamEnergy`, `beamPosition`, `beamDirection` |
-| Sr/Y 베타 스펙트럼 모드 | `spectrumPosition`, `sourceConeLength`, `sourceConeRadius` |
-
-예: 외부 트리거를 사용하려면 `fConfig.trigger = "external";`로 바꾸세요.
-양쪽 SiPM과 콜리메이터도 필요하면 `s13`의 첫 값을 true,
-`collimator`를 true로 설정합니다. 외부 트리거 선택 시 PS 카운터가 자동 배치됩니다.
-
-결합 물질은 `air`, `grease`, `cookie`입니다. 가이드가 없으면
-CsI → gap → SiPM, 있으면 CsI → gap → guide → guideGap → SiPM입니다.
-PDE·굴절률·흡수길이·발광 스펙트럼 같은 물질 데이터는 `src/Materials.cc`,
-물리 프로세스 등록은 `src/PhysicsList.cc`에 있습니다.
-CsI 크기 및 고정 구조물 치수는 DetectorConstruction의 `Construct()`에 있습니다.
-
-## 이전 구조에서 달라진 점
-
-기존 예제 매크로는 코드의 기본값을 덮어써 실행 파일별로 검출 조건이 달랐습니다.
-이제 조건을 덮어쓰지 않습니다. `single_sipm.mac`, `external_trigger.mac`,
-`light_guide.mac`은 호환용으로 `batch.mac`을 실행하며 이름에 따른 조건 변경은 없습니다.
-기존 `/damsa/` 명령이 있는 개인 매크로는 해당 줄을 제거하고 조건을 C++에 옮겨야 합니다.
-선원 조건을 DetectorConstruction으로 옮겼으며 현재 기본값은 유지했습니다.
-기존 `validation/check_output.C`는 과거 세 프리셋 결과 파일 전용 검증입니다.
-현재 공통 배치 실행에 대한 검증으로 사용하지 마세요.
-
-## 기본값과 광학
-
-기본값은 `DAMSA_CsI_single_sipm`의 광학/검출기 설정입니다.
-
-- CsI: 10 × 10 × 120 mm, S14(-z)만 사용, SiPM 6 × 6 × 2 mm.
-- CsI–SiPM: 1 µm 공기층. 측면 공기층 0.15 mm, 반사체 기본 없음.
-- 반사체를 켜면 측면 4개와 SiPM이 없는 끝면에 0.04 mm 포일을 배치합니다.
-- `Materials.cc`는 Single_sipm 기준으로 통합했습니다. S13/S14의 `EFFICIENCY`는
-  모두 `BNL_s13PDE`를 사용합니다. 배열 값은 **퍼센트**이며 코드에서 100으로 나눕니다.
-  개별 PDE를 쓰려면 `mptS13`/`mptS14`의 `EFFICIENCY` 배열 연결을 변경하세요.
-- CsI 발광 스펙트럼/수율/흡수길이, 매끄럽게 연마된 표면(`polished`), 테플론의
-  뒷면 반사 도장 표면 모형(`groundbackpainted`)과 굴절률(`RINDEX`)도 Single_sipm과 같습니다.
-- 기본 셀프 트리거는 검출 광자 수 **> 13**입니다. 기본 S14 한 개에서는 기존 조건과 같습니다.
-
-소스 생성 알고리즘은 `PrimaryGeneratorAction.cc`에 있으며 설정은 DetectorConstruction에 있습니다(기본 Sr-90 이온,
-위치 (0, 7, -55) mm). `sourceBead`는 (0, 10.6, -30.25) mm의 기존 나트륨 구형
-**물질 구조물만** 켜고 끕니다. 방사선 소스 종류/위치를 바꾸는 옵션은 아닙니다.
-
-## 트리거와 ROOT 출력
-
-| 트리거 설정 | 배치 및 선택 조건 | 선택 이벤트 트리 |
-|---|---|---|
-| `none` | 카운터 없음, 모든 이벤트 기록 | `AllEvents` |
-| `crystal` | 카운터 없음, 지정 SiPM 광검출 조건 | `CrystalTrigger` |
-| `external` | 플라스틱 섬광체(PS) 카운터 자동 배치, 카운터 에너지 침적량 > 임계값 | `ExternalTrigger` |
-
-`sum`은 S13+S14 합, `s13`/`s14`는 해당 채널, `coincidence`는 두 채널이
-**각각** 임계값보다 커야 합니다. 사용하지 않는 채널로 트리거를 걸면 초기화 오류를 냅니다.
-외부 카운터 크기는 60 × 2 × 10 mm, 중심 y=6.5 mm입니다.
-
-공통 열은 `eventID`, `crystalEdep_keV`, `Generated_photons`입니다.
-
-| 결과 열 | 설명 |
-|---|---|
-| `eventID` | 해당 런에서의 이벤트 번호 |
-| `crystalEdep_keV` | 크리스탈 내부 에너지 침적량, 단위 keV |
-| `Generated_photons` | 크리스탈에서 생성된 섬광 광자 수 |
-| `PSEdep_keV` | 외부 플라스틱 섬광체의 에너지 침적량, 단위 keV |
-| `S13`, `S14` | 각 SiPM에서 검출된 크리스탈 섬광 광자 수; PDE가 반영된 검출 수 |
-
-외부 트리거일 때만 `PSEdep_keV`, 활성 SiPM에 대해서만 `S13`/`S14` 열이 생깁니다.
-별도 `PhotoDetected` 트리는 트리거 통과 여부와 관계없이 광자가 1개 이상 검출된
-이벤트를 같은 열 구성으로 기록합니다. `CsI_Wl` 히스토그램은 모든 이벤트의
-CsI에서 생성된 섬광 광자의 파장(nm) 분포입니다.
-
-설정 요약은 출력 파일 이름 뒤에 `.config.txt`를 붙여 저장합니다.
-ROOT 트리/열 이름이 기존 결과와 달라졌으므로 외부 분석 스크립트도 확인하세요.
-포함된 fit/histo 매크로는 새 트리 및 기존 `Trigger activated`를 자동 탐색합니다.
-한 프로세스에서 여러 런(이벤트 묶음)을 실행하면 같은 출력 파일은 덮어쓰므로 각
-`/run/beamOn` 앞에서 `/analysis/setFileName`을 다르게 지정하세요.
+양끝을 기록하면 같은 크리스탈의 생성 수·디파짓이 두 채널에 반복되므로 합산하지 마세요.
+빔 정보를 요구하는 이전 `PlotEnergy` 설명은 구형 스키마 기준입니다.
+현재 edep 분석은 `analysis/PlotEdep.C`, `analysis/PlotEcorr.C`를 사용합니다.

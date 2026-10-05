@@ -11,17 +11,17 @@ class DetectorConstruction : public G4VUserDetectorConstruction
 {
 public:
     // All lengths are full sizes. Defaults are assigned in DetectorConstruction.cc.
-    struct Sensor {
+    struct RecordingArea {
         G4bool enabled;
-        G4double width, height, thickness;
-        G4double gap;
+        G4double width, height, offsetX, offsetY;
+        G4double gap; // Crystal-to-guide gap, or recording gap when no guide is used.
         G4String gapMaterial;
         G4bool lightGuide;
-        G4double guideLength, guideGap;
+        G4double guideLength, guideWidth, guideHeight;
         G4String guideMaterial;
     };
     struct Configuration {
-        Sensor s13, s14; // +z and -z, respectively
+        RecordingArea s13, s14; // +z and -z, respectively
         G4String reflector, trigger;
         G4double sideGap, foilThickness;
         G4bool collimator, sourceBead, checkOverlaps;
@@ -30,6 +30,11 @@ public:
         G4double externalThreshold;
     };
 
+    static constexpr G4int CrystalCount = 8;
+    G4int Channel(G4int crystal, G4int sign) const {
+        return (crystal-1)*(fConfig.s13.enabled + fConfig.s14.enabled)
+             + (sign > 0 || !fConfig.s13.enabled ? 1 : 2);
+    }
     DetectorConstruction();
     ~DetectorConstruction() override;
     G4VPhysicalVolume* Construct() override;

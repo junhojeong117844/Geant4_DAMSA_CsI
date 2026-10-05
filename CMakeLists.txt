@@ -7,19 +7,13 @@ include(${Geant4_USE_FILE})
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
 file(GLOB sources ${PROJECT_SOURCE_DIR}/src/*.cc)
-file(GLOB runtime_files
-    ${PROJECT_SOURCE_DIR}/macros/*.mac
-    ${PROJECT_SOURCE_DIR}/macros/*.csv
-)
-
 add_executable(DAMSA_CsI sim.cc ${sources})
 target_link_libraries(DAMSA_CsI ${Geant4_LIBRARIES})
 
-foreach(runtime_file ${runtime_files})
-    get_filename_component(runtime_name ${runtime_file} NAME)
-    configure_file(
-        ${runtime_file}
-        ${PROJECT_BINARY_DIR}/${runtime_name}
-        COPYONLY
-    )
-endforeach()
+
+file(GLOB macro_files "${PROJECT_SOURCE_DIR}/macros/*.mac")
+add_custom_target(copy_macros ALL
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          ${macro_files} ${PROJECT_BINARY_DIR}
+  COMMENT "Copying macro files to the build directory"
+)

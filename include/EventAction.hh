@@ -1,35 +1,23 @@
 #ifndef EventAction_h
 #define EventAction_h 1
-
 #include "G4UserEventAction.hh"
 #include "globals.hh"
-
-class G4Event;
+#include <array>
+class G4Step;
 class DetectorConstruction;
-
-class EventAction : public G4UserEventAction
-{
+class RunAction;
+class EventAction : public G4UserEventAction {
 public:
-    explicit EventAction(const DetectorConstruction* detector) : fDetector(detector) {}
-    ~EventAction() override = default;
-
+    EventAction(const DetectorConstruction* detector, RunAction* run) : fDetector(detector), fRun(run) {}
     void BeginOfEventAction(const G4Event*) override;
     void EndOfEventAction(const G4Event*) override;
-
-    void AddGeneratedPhoton() { ++fGeneratedPhotons; }
-    void AddS13Photon() { ++fS13Photons; }
-    void AddS14Photon() { ++fS14Photons; }
-    void AddPSEdep(G4double edep) { fPSEdep += edep; }
-    void AddCrystalEdep(G4double edep) { fCrystalEdep += edep; }
-
+    void AddGeneratedPhoton(G4int crystal) { ++fGeneratedByCrystal.at(crystal-1); }
+    void AddEnergyDeposit(G4int crystal, G4double energy) { fEdepByCrystal.at(crystal-1) += energy; }
+    void RecordPhoton(G4int crystal, G4int sign, const G4Step* step);
 private:
     const DetectorConstruction* fDetector;
-    G4int fGeneratedPhotons = 0;
-    G4int fS13Photons = 0;
-    G4int fS14Photons = 0;
-
-    G4double fPSEdep = 0.;
-    G4double fCrystalEdep = 0.;
+    RunAction* fRun;
+    std::array<G4double, 8> fEdepByCrystal{};
+    std::array<G4int, 8> fGeneratedByCrystal{};
 };
-
 #endif

@@ -1,0 +1,5 @@
+/datas/
+/build/
+*.root
+*.root.config.txt
+.DS_Store

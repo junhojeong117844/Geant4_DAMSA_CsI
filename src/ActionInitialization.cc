@@ -13,9 +13,10 @@ void ActionInitialization::BuildForMaster() const
 void ActionInitialization::Build() const
 {
     SetUserAction(new PrimaryGeneratorAction());
-    SetUserAction(new RunAction(fDetector));
+    auto* runAction = new RunAction(fDetector);
+    SetUserAction(runAction);
 
-    auto* eventAction = new EventAction(fDetector);
+    auto* eventAction = new EventAction(fDetector, runAction);
     SetUserAction(eventAction);
-    SetUserAction(new SteppingAction(eventAction));
+    SetUserAction(new SteppingAction(eventAction, fDetector));
 }

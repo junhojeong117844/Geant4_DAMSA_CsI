@@ -4,7 +4,7 @@
 /run/verbose 1
 
 /run/initialize
-/analysis/setFileName output.root
+/analysis/setFileName ../datas/output.root
 
 /vis/open OGL 600x600-0+0
 

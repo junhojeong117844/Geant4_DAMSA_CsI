@@ -4,22 +4,21 @@
 #include "G4UserSteppingAction.hh"
 
 class EventAction;
-class G4OpBoundaryProcess;
+class DetectorConstruction;
 class G4Step;
 
 class SteppingAction : public G4UserSteppingAction
 {
 public:
-    explicit SteppingAction(EventAction* eventAction);
+    SteppingAction(EventAction* eventAction, const DetectorConstruction* detector);
     ~SteppingAction() override = default;
 
     void UserSteppingAction(const G4Step*) override;
 
 private:
-    G4OpBoundaryProcess* GetBoundaryProcess();
 
     EventAction* fEventAction = nullptr;
-    G4OpBoundaryProcess* fBoundaryProcess = nullptr;
+    const DetectorConstruction* fDetector;
 };
 
 #endif
