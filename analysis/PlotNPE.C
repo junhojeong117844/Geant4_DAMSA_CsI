@@ -14,21 +14,17 @@
 #include <algorithm>
 #include <vector>
 
-// Run: root PlotNPE.C
-// Fit range: PlotNPE("file.root", 149, 1., 150.);
-// Every event contributes one count, including zero NPE.
-void PlotNPE(const char* filename = "../datas/Teflon_8SiPM_0um_6mm.root", int bins = 149,
-             double fitMin = 1., double fitMax = 1500.)
+void PlotNPE()
 {
     gStyle->SetOptStat(0);
-    // Compact, transparent information box at the upper right.
+
     auto drawInfo = [](TH1D* hist, const TF1* fit) {
         hist->SetStats(false);
         gPad->Update();
         const TString lines[] = {
             Form("NPE mean = %.4g", hist->GetMean()),
             fit ? Form("Fit mean = %.4g", fit->GetParameter(1)) : "Fit mean = n/a",
-            Form("Entries = %.0f", hist->GetEntries())
+            Form("Entries = %.0f", hist->Integral())
         };
         const double padWidth = gPad->GetWw() * gPad->GetAbsWNDC();
         const double padHeight = gPad->GetWh() * gPad->GetAbsHNDC();
@@ -56,21 +52,14 @@ void PlotNPE(const char* filename = "../datas/Teflon_8SiPM_0um_6mm.root", int bi
         for (const auto& line : lines) info->AddText(line);
         info->Draw();
     };
-    const int models[] = {1325, 1350, 1375};
 
-    TFile file(filename, "READ");
-    if (file.IsZombie()) return;
-    TTree* trees[8] = {};
-    for (int channel = 1; channel <= 8; ++channel) {
-        trees[channel - 1] = file.Get<TTree>(Form("SiPM%d", channel));
-        if (!trees[channel - 1] || !trees[channel - 1]->GetBranch("energy_eV")) return;
-    }
+    const int models[] = {1325, 1350, 1375};
 
     const double energy[] = {
         1.80, 1.85, 1.91, 1.97, 2.03, 2.10, 2.17, 2.25, 2.34, 2.43,
         2.53, 2.64, 2.75, 2.88, 3.02, 3.18, 3.35, 3.54, 3.76, 4.00, 4.28, 4.59
     };
-    // Original S1325CSPDE, S1350CSPDE, S1375CSPDE tables from Materials.cc (%).
+
     const double pde[3][22] = {
         {9.9, 11.3, 12.8, 14.2, 15.8, 17.2, 18.8, 20.3, 22.2, 23.6,
          24.6, 25.2, 25.1, 24.9, 23.7, 22.1, 19.1, 18.0, 17.1, 15.1, 9.5, 1.5},
@@ -81,75 +70,75 @@ void PlotNPE(const char* filename = "../datas/Teflon_8SiPM_0um_6mm.root", int bi
     };
 
     TGraph efficiency[3];
-    for (int row = 0; row < 3; ++row)
+    for (int row = 0; row < 3; row++) {
         efficiency[row] = TGraph(22, energy, pde[row]);
-    std::vector<double> eventNPE[3][8];
-    double maximumNPE = 0.;
-    for (int channel = 1; channel <= 8; ++channel) {
-        TTreeReader reader(trees[channel - 1]);
-        TTreeReaderArray<double> photonEnergy(reader, "energy_eV");
-        while (reader.Next()) {
-            double npe[3] = {};
-            for (double photon : photonEnergy) {
-                for (int row = 0; row < 3; ++row)
-                    npe[row] += efficiency[row].Eval(std::clamp(photon, energy[0], energy[21])) / 100.;
-            }
-            for (int row = 0; row < 3; ++row) {
-                eventNPE[row][channel - 1].push_back(npe[row]);
-                maximumNPE = std::max(maximumNPE, npe[row]);
-            }
-        }
-        if (reader.GetEntryStatus() != TTreeReader::kEntryBeyondEnd) return;
     }
 
-    // Shared range includes every event, with the maximum below the upper edge.
-    const short int lowerNPE = 1;
-    const short int upperNPE = 1500;
-    auto* canvas = new TCanvas("teflon_h1_canvas", "Teflon NPE: channels 1-8", 1600, 600);
-    canvas->Divide(8, 3, 0.001, 0.001);
-    TH1D* histograms[3][8] = {};
-    double commonMaximum = 0.;
-    for (int row = 0; row < 3; ++row) {
-        for (int channel = 1; channel <= 8; ++channel) {
-            auto* hist = new TH1D(Form("h1_%d_ch%d", models[row], channel),
-                                  Form("%d Channel %d;NPE;Counts", models[row], channel),
-                                  bins, lowerNPE, upperNPE);
-            hist->SetDirectory(nullptr);
-            hist->SetStats(false);
-            for (double npe : eventNPE[row][channel - 1]) hist->Fill(npe);
-            histograms[row][channel - 1] = hist;
-            commonMaximum = std::max(commonMaximum, hist->GetMaximum());
+    std::vector<double> eventNPE[3][8];
+
+    TFile* file = TFile::Open("../datas/Teflon_8SiPM_0um_6mm.root");
+
+    for (int channel = 1; channel <= 8; channel++) {
+        TTree* tree = (TTree*)file->Get(Form("SiPM%d", channel));
+        TTreeReader reader(tree);
+        TTreeReaderArray<double> photonEnergy(reader, "energy_eV");
+
+        while (reader.Next()) {
+            double npe[3] = {};
+
+            for (double photon : photonEnergy) {
+                for (int row = 0; row < 3; row++) {
+                    npe[row] += efficiency[row].Eval(
+                        std::clamp(photon, energy[0], energy[21])
+                    ) / 100.;
+                }
+            }
+
+            for (int row = 0; row < 3; row++) {
+                eventNPE[row][channel - 1].push_back(npe[row]);
+            }
         }
     }
-    for (int row = 0; row < 3; ++row) {
-        for (int channel = 1; channel <= 8; ++channel) {
-            auto* hist = histograms[row][channel - 1];
-            hist->SetMinimum(0.);
-            hist->SetMaximum(std::max(1., commonMaximum*1.1));
+
+    TCanvas* canvas = new TCanvas("teflon_h1_canvas", "Teflon NPE: channels 1-8", 1600, 600);
+    canvas->Divide(8, 3, 0.001, 0.001);
+
+    for (int row = 0; row < 3; row++) {
+        for (int channel = 1; channel <= 8; channel++) {
+            TH1D* hist = new TH1D(
+                Form("h1_%d_ch%d", models[row], channel),
+                Form("%d Channel %d;NPE;Counts", models[row], channel),
+                149, 1, 1500
+            );
+
+            for (double npe : eventNPE[row][channel - 1]) {
+                hist->Fill(npe);
+            }
+
             canvas->cd(row * 8 + channel);
             gPad->SetLeftMargin(0.18);
             gPad->SetRightMargin(0.12);
             gPad->SetBottomMargin(0.15);
             gPad->SetTopMargin(0.15);
+
             hist->SetLineColor(kBlue + row);
             hist->SetLineWidth(3);
             hist->Draw("HIST");
-            const TF1* fittedGaussian = nullptr;
-            if (hist->GetEntries() > 0 && hist->GetRMS() > 0.) {
-                TF1 gaussian(Form("gaus_%d_ch%d", models[row], channel),
-                             "gaus", fitMin, fitMax);
-                gaussian.SetParameters(hist->GetMaximum(), hist->GetMean(), hist->GetRMS());
-                gaussian.SetLineColor(kRed);
-                gaussian.SetLineWidth(2);
-                const int fitStatus = hist->Fit(&gaussian, "QRB0");
-                if (auto* fit = hist->GetFunction(gaussian.GetName())) {
-                    fit->Draw("SAME");
-                    if (fitStatus == 0) fittedGaussian = fit;
-                }
-            }
-            drawInfo(hist, fittedGaussian);
+
+            TF1* gaus = new TF1(
+                Form("gaus_%d_ch%d", models[row], channel),
+                "gaus",
+                1, 1500
+            );
+
+            gaus->SetLineColor(kRed);
+            gaus->SetLineWidth(2);
+            hist->Fit(gaus, "RQ0");
+            gaus->Draw("SAME");
+
+            drawInfo(hist, gaus);
         }
     }
-    canvas->Update();
 
+    canvas->Update();
 }
