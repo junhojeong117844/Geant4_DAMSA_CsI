@@ -13,7 +13,7 @@
 void PlotEdep()
 {
     gStyle->SetOptStat(110);
-    TFile file("../datas/output.root", "READ");
+    TFile file("../datas/Teflon_8SiPM_0um_6mm.root", "READ");
     if (file.IsZombie()) return;
     TTree* trees[8] = {};
     double upperEnergy = 100;
@@ -30,7 +30,7 @@ void PlotEdep()
                              100, 0.0, upperEnergy);
         hist->SetDirectory(nullptr);
         TTreeReader reader(trees[crystal - 1]);
-        TTreeReaderValue<double> edep(reader, "edep_MeV");
+        TTreeReaderValue<double> edep(reader, "Generated_photons");
         while (reader.Next()) {
             if (*edep == 0.) continue;
             hist->Fill(*edep);

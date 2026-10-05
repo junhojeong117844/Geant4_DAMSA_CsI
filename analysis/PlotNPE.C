@@ -8,26 +8,24 @@
 #include <TTree.h>
 #include <TTreeReader.h>
 #include <TTreeReaderArray.h>
-#include <TTreeReaderValue.h>
 #include <TPad.h>
 #include <TPaveText.h>
 #include <TText.h>
 #include <algorithm>
-#include <cmath>
 #include <vector>
 
 // Run: root PlotNPE.C
-// Each event in the plotted NPE range contributes one count.
-void PlotNPE(const char* filename = "../datas/output.root", int bins = 149)
+// Fit range: PlotNPE("file.root", 149, 1., 150.);
+// Every event contributes one count, including zero NPE.
+void PlotNPE(const char* filename = "../datas/Teflon_8SiPM_0um_6mm.root", int bins = 149,
+             double fitMin = 1., double fitMax = 1500.)
 {
     gStyle->SetOptStat(0);
     // Compact, transparent information box at the upper right.
-    auto drawInfo = [](TH1D* hist, double efficiencyPercent, bool valid,
-                       const TF1* fit) {
+    auto drawInfo = [](TH1D* hist, const TF1* fit) {
         hist->SetStats(false);
         gPad->Update();
         const TString lines[] = {
-            valid ? Form("Efficiency = %.3g%%", efficiencyPercent) : "Efficiency = n/a",
             Form("NPE mean = %.4g", hist->GetMean()),
             fit ? Form("Fit mean = %.4g", fit->GetParameter(1)) : "Fit mean = n/a",
             Form("Entries = %.0f", hist->GetEntries())
@@ -47,7 +45,7 @@ void PlotNPE(const char* filename = "../datas/output.root", int bins = 149)
         const double right = 1. - gPad->GetRightMargin() - 0.01;
         const double top = 1. - gPad->GetTopMargin() - 0.02;
         const double width = (maxWidth + 4.) / padWidth;
-        const double height = (4. * (fontPixels + 2.) + 2.) / padHeight;
+        const double height = (3. * (fontPixels + 2.) + 2.) / padHeight;
         auto* info = new TPaveText(right - width, top - height, right, top, "NDC");
         info->SetFillStyle(0);
         info->SetBorderSize(0);
@@ -65,8 +63,7 @@ void PlotNPE(const char* filename = "../datas/output.root", int bins = 149)
     TTree* trees[8] = {};
     for (int channel = 1; channel <= 8; ++channel) {
         trees[channel - 1] = file.Get<TTree>(Form("SiPM%d", channel));
-        if (!trees[channel - 1] || !trees[channel - 1]->GetBranch("energy_eV") ||
-            !trees[channel - 1]->GetBranch("Generated_photons")) return;
+        if (!trees[channel - 1] || !trees[channel - 1]->GetBranch("energy_eV")) return;
     }
 
     const double energy[] = {
@@ -87,13 +84,11 @@ void PlotNPE(const char* filename = "../datas/output.root", int bins = 149)
     for (int row = 0; row < 3; ++row)
         efficiency[row] = TGraph(22, energy, pde[row]);
     std::vector<double> eventNPE[3][8];
-    std::vector<int> eventGenerated[8];
+    double maximumNPE = 0.;
     for (int channel = 1; channel <= 8; ++channel) {
         TTreeReader reader(trees[channel - 1]);
         TTreeReaderArray<double> photonEnergy(reader, "energy_eV");
-        TTreeReaderValue<int> generated(reader, "Generated_photons");
         while (reader.Next()) {
-            eventGenerated[channel - 1].push_back(*generated);
             double npe[3] = {};
             for (double photon : photonEnergy) {
                 for (int row = 0; row < 3; ++row)
@@ -101,19 +96,18 @@ void PlotNPE(const char* filename = "../datas/output.root", int bins = 149)
             }
             for (int row = 0; row < 3; ++row) {
                 eventNPE[row][channel - 1].push_back(npe[row]);
+                maximumNPE = std::max(maximumNPE, npe[row]);
             }
         }
         if (reader.GetEntryStatus() != TTreeReader::kEntryBeyondEnd) return;
     }
 
-    // Only events in [lowerNPE, upperNPE) enter the histogram and its statistics.
-    const double lowerNPE = 1.;
-    const double upperNPE = 150.;
+    // Shared range includes every event, with the maximum below the upper edge.
+    const short int lowerNPE = 1;
+    const short int upperNPE = 1500;
     auto* canvas = new TCanvas("teflon_h1_canvas", "Teflon NPE: channels 1-8", 1600, 600);
     canvas->Divide(8, 3, 0.001, 0.001);
     TH1D* histograms[3][8] = {};
-    double ratioSum[3][8] = {};
-    size_t ratioEntries[3][8] = {};
     double commonMaximum = 0.;
     for (int row = 0; row < 3; ++row) {
         for (int channel = 1; channel <= 8; ++channel) {
@@ -122,18 +116,7 @@ void PlotNPE(const char* filename = "../datas/output.root", int bins = 149)
                                   bins, lowerNPE, upperNPE);
             hist->SetDirectory(nullptr);
             hist->SetStats(false);
-            const auto& generated = eventGenerated[channel - 1];
-            for (size_t event = 0; event < generated.size(); ++event) {
-                const double npe = eventNPE[row][channel - 1][event];
-                if (npe >= lowerNPE && npe < upperNPE) {
-                    hist->Fill(npe);
-                    // Event-wise mean percentage for the same NPE-selected events.
-                    if (generated[event] > 0) {
-                        ratioSum[row][channel - 1] += 100. * npe / generated[event];
-                        ++ratioEntries[row][channel - 1];
-                    }
-                }
-            }
+            for (double npe : eventNPE[row][channel - 1]) hist->Fill(npe);
             histograms[row][channel - 1] = hist;
             commonMaximum = std::max(commonMaximum, hist->GetMaximum());
         }
@@ -154,8 +137,7 @@ void PlotNPE(const char* filename = "../datas/output.root", int bins = 149)
             const TF1* fittedGaussian = nullptr;
             if (hist->GetEntries() > 0 && hist->GetRMS() > 0.) {
                 TF1 gaussian(Form("gaus_%d_ch%d", models[row], channel),
-                             "gaus", lowerNPE, upperNPE);
-                // Seed the mean from the histogram; all parameters remain free.
+                             "gaus", fitMin, fitMax);
                 gaussian.SetParameters(hist->GetMaximum(), hist->GetMean(), hist->GetRMS());
                 gaussian.SetLineColor(kRed);
                 gaussian.SetLineWidth(2);
@@ -165,9 +147,7 @@ void PlotNPE(const char* filename = "../datas/output.root", int bins = 149)
                     if (fitStatus == 0) fittedGaussian = fit;
                 }
             }
-            const size_t valid = ratioEntries[row][channel - 1];
-            drawInfo(hist, valid ? ratioSum[row][channel - 1] / valid : 0., valid > 0,
-                     fittedGaussian);
+            drawInfo(hist, fittedGaussian);
         }
     }
     canvas->Update();
